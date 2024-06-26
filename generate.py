@@ -9,6 +9,7 @@ from sampler import multistep_consistency_sampling
 from torchmetrics.image.fid import FrechetInceptionDistance
 from tqdm import tqdm
 import click
+import os
 
 @torch.no_grad()
 @click.command()
@@ -27,24 +28,31 @@ def generate(cfg, nrow=8, ncol=8, calc_fid=False, ckpt=None):
     model = Diffusion.load_from_checkpoint(ckpt, cfg=cfg).cuda()
     model.eval()
 
+    # Extract the directory path
+    directory_path = os.path.dirname(os.path.dirname(ckpt))
+
+    # Create the "generated" folder within the extracted directory
+    generated_folder_path = os.path.join(directory_path, 'generated')
+    os.makedirs(generated_folder_path, exist_ok=True)
+
     latents = torch.randn(nrow * ncol, cfg.data.img_channels, cfg.data.img_resolution, cfg.data.img_resolution).cuda()
     xh = multistep_consistency_sampling(model.net_ema, latents=latents, t_steps=[80, 40, 20, 10, 5])
     xh = (xh * 0.5 + 0.5).clamp(0, 1)
     grid = make_grid(xh, nrow=nrow, padding=0)
     name = cfg.data.name
-    save_image(grid, f"ct_{name}_sample_5step.png")
+    save_image(grid, f"{generated_folder_path}/ct_{name}_sample_5step.png")
 
     # Sample 2 Steps
     xh = multistep_consistency_sampling(model.net_ema, latents=latents, t_steps=[80, 75])
     xh = (xh * 0.5 + 0.5).clamp(0, 1)
     grid = make_grid(xh, nrow=nrow, padding=0)
-    save_image(grid, f"ct_{name}_sample_2step.png")
+    save_image(grid, f"{generated_folder_path}/ct_{name}_sample_2step.png")
 
     # Sample 1 Step
     xh = multistep_consistency_sampling(model.net_ema, latents=latents, t_steps=[80])
     xh = (xh * 0.5 + 0.5).clamp(0, 1)
     grid = make_grid(xh, nrow=nrow, padding=0)
-    save_image(grid, f"ct_{name}_sample_1step.png")
+    save_image(grid, f"{generated_folder_path}/ct_{name}_sample_1step.png")
 
     if not calc_fid:
         return

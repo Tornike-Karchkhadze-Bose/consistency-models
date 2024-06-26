@@ -3,3 +3,8 @@ lightning_logs/
 samples/
 tmp/
 search.py
+lightning_logs
+data
+.gitignore
+.vscode
+*.ipynb

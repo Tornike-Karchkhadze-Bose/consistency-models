@@ -28,6 +28,18 @@ standard benchmarks like CIFAR-10, ImageNet
 
 
 ## Getting Started
+
+make conda env:
+```
+conda env create --file environment.yaml
+```
+
+Make directoris for data and log
+```
+mkdir data
+mkdir lightning_logs
+```
+
 To train a model under Consistency Training (CT) setting.
 ```
 python main.py --cfg config.yml
