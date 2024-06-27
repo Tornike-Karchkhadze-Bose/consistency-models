@@ -1,0 +1,59 @@
+project_name: "consistancy_models_butterflies256"
+log_directory: "lightning_logs"
+mode: train # train | test
+
+id:
+  version: "adaptive"
+  name: "ct_diff_lpips"
+
+
+model:
+    ema: True
+    ema_rate: 0.999
+    dropout: 0.0
+
+training:
+    batch_size: 230
+    precision: 16
+    max_epochs: 1000
+    max_steps: 20000 #800000
+    warmup_epochs: 1
+    accumulate_grad_batches: 4
+    save_top_k: 3
+    log_every_n_steps: 2
+    validation_every_n_epochs: 100 # ???
+    resume_from_checkpoint: #lightning_logs/consistancy_models_cifar10_testing/2024-06-22T10-40-20_ct_diff_lpips_adaptive/checkpoints/last.ckpt
+    devices: 
+        # - 0
+        # - 1
+        # - 2   
+        - 3
+
+testing:
+    batch_size: 512
+    samples: 64
+    calc_inception: True
+    calc_fid: True
+
+data:
+    name: butterflies256 # cifar10 | butterflies256 | mnist
+    num_workers: 4
+    img_resolution : 32
+    img_channels : 3
+
+optim:
+    grad_clip: null
+    weight_decay: 0
+    lr: 4.e-4
+    betas: [0.9,0.999]
+    eps: 1.e-8
+    amsgrad: False
+    optimizer : radam
+
+diffusion:
+    preconditioning: ct # vp | ve | edm
+    N_and_mu: adaptive # adaptive | fixed
+    mu_0 : 0.90 #0.90
+    s_0 : 2
+    s_1 : 150
+    ct_dist_fn : lpips # l1 | l2 | lpips

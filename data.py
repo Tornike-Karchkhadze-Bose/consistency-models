@@ -1,5 +1,6 @@
 import torchvision
 import subprocess
+import torch
 import os
 from torch.utils.data import random_split
 
@@ -22,6 +23,9 @@ def get_butterflies256_dataset(train: bool, root: str = "data/butterflies256", t
 
     dataset = torchvision.datasets.ImageFolder(root, transform=transform)
     
+    # Set the random seed for reproducibility
+    torch.manual_seed(42)
+
     # Splitting the dataset into train and test sets
     train_size = int(0.9 * len(dataset))
     test_size = len(dataset) - train_size

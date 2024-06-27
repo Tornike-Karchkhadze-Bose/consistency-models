@@ -13,7 +13,7 @@ model:
     dropout: 0.0
 
 training:
-    batch_size: 512
+    batch_size: 220 #512
     precision: 16
     max_epochs: 1000
     max_steps: 800000
@@ -22,14 +22,14 @@ training:
     save_top_k: 3
     log_every_n_steps: 10
     validation_every_n_epochs: 50 # ???
-    resume_from_checkpoint: lightning_logs/consistancy_models_cifar10_testing/2024-06-22T10-40-20_ct_diff_lpips_adaptive/checkpoints/last.ckpt
+    resume_from_checkpoint: lightning_logs/consistancy_models_cifar10_testing/2024-06-24T08-22-35_ct_diff_lpips_adaptive/checkpoints/last.ckpt
     devices: 
         - 0
         - 1
-        # - 2    
+        - 2    
 
 testing:
-    batch_size: 1024
+    batch_size: 512 #1024
     samples: 64
     calc_inception: True
     calc_fid: True
