@@ -11,6 +11,14 @@ import os
 import datetime
 from pytorch_lightning.loggers import WandbLogger
 import numpy as np
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
+
+@rank_zero_only
+def create_directories(path):
+    '''
+    Makes sure to create directoris for only process 0 in multi-GPU scenarios
+    '''
+    os.makedirs(path, exist_ok=True)
 
 def dict2namespace(config):
     namespace = argparse.Namespace()
@@ -31,7 +39,7 @@ def main(cfg):
         cfg = dict2namespace(cfg)
 
     log_path = cfg.log_directory
-    os.makedirs(log_path, exist_ok=True)
+    create_directories(log_path)
 
     # adding a random number of seconds so that exp folder names coincide less often
     random_seconds_shift = datetime.timedelta(seconds=np.random.randint(60))
@@ -51,7 +59,7 @@ def main(cfg):
         nowname,
     )
 
-    os.makedirs(run_path, exist_ok=True)
+    create_directories(run_path)
 
     wandb_logger = WandbLogger(
         save_dir=run_path,
@@ -68,7 +76,7 @@ def main(cfg):
         nowname,
         "checkpoints",
     )
-    os.makedirs(checkpoint_path, exist_ok=True)
+    create_directories(checkpoint_path)
 
     ckpt_callback = EMAModelCheckpoint(dirpath= checkpoint_path, save_top_k=cfg.training.save_top_k, monitor="val_loss", save_last=True, filename='{epoch}-{val_loss:.4f}', every_n_train_steps=None,)
     ema_callback = EMA(decay=cfg.model.ema_rate)
@@ -104,8 +112,8 @@ def main(cfg):
         accelerator="gpu", 
         devices=cfg.training.devices,
         num_sanity_val_steps=0,
-        # limit_val_batches=2,
-        # limit_train_batches=2,
+        # limit_val_batches=10,
+        # limit_train_batches=10,
         log_every_n_steps=cfg.training.log_every_n_steps,
         check_val_every_n_epoch=cfg.training.validation_every_n_epochs,
         gradient_clip_val=cfg.optim.grad_clip,

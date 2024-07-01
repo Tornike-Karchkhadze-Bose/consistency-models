@@ -3,7 +3,7 @@ log_directory: "lightning_logs"
 mode: train # train | test
 
 id:
-  version: "adaptive"
+  version: "adaptive_bs=128x4_s_200000_gpu-2"
   name: "ct_diff_lpips"
 
 
@@ -13,21 +13,21 @@ model:
     dropout: 0.0
 
 training:
-    batch_size: 230
+    batch_size: 128
     precision: 16
     max_epochs: 1000
-    max_steps: 20000 #800000
+    max_steps: 800000 #800000
     warmup_epochs: 1
     accumulate_grad_batches: 4
-    save_top_k: 3
+    save_top_k: 1
     log_every_n_steps: 2
     validation_every_n_epochs: 100 # ???
-    resume_from_checkpoint: #lightning_logs/consistancy_models_cifar10_testing/2024-06-22T10-40-20_ct_diff_lpips_adaptive/checkpoints/last.ckpt
+    resume_from_checkpoint: /home/tornike/consistency-models/lightning_logs/consistancy_models_butterflies256/2024-06-29T09-50-11_ct_diff_lpips_adaptive_bs=230x4_s_800000_gpu-1/checkpoints/last.ckpt
     devices: 
         # - 0
-        # - 1
-        # - 2   
-        - 3
+        - 1
+        - 2   
+        # - 3
 
 testing:
     batch_size: 512

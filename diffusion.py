@@ -8,9 +8,10 @@ from sampler import multistep_consistency_sampling
 from torchvision.utils import make_grid, save_image
 import copy
 from torchmetrics.image.inception import InceptionScore
-from sampler import multistep_consistency_sampling
+# from sampler import multistep_consistency_sampling
 import os
 from torchmetrics.image.fid import FrechetInceptionDistance
+import yaml
 
 
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
@@ -85,14 +86,28 @@ class Diffusion(pl.LightningModule):
         # return {'loss': loss}
         return loss
 
-    def validation_step(self, batch, _):
+    def validation_step(self, batch, batch_idx):
         images, _ = batch
         if self.N_and_mu == "fixed":
             loss = self.loss_fn(net=self.net, net_ema=self.net_ema, images=images, k=self.cfg.training.max_steps).mean()
         elif self.N_and_mu == "adaptive":
             loss = self.loss_fn(net=self.net, net_ema=self.net_ema, images=images, k=self.global_step).mean()
         self.log("val_loss", loss, sync_dist=True)
-        
+
+        # Log one sample of the original and generated images for the first batch in the epoch
+        if batch_idx == 0 and self.global_rank == 0:
+            name = self.cfg.data.name
+            latents = torch.randn(self.cfg.testing.samples, self.cfg.data.img_channels, self.cfg.data.img_resolution, self.cfg.data.img_resolution).to(self.device) 
+            xh = multistep_consistency_sampling(self.net_ema, latents=latents, t_steps=[80])
+            xh = (xh * 0.5 + 0.5).clamp(0, 1)
+            generated_grid = make_grid(xh, nrow=8)
+
+            original_image = (images[:self.cfg.testing.samples] * 0.5 + 0.5).clamp(0, 1)
+            original_grid = make_grid(original_image, nrow=8)
+
+            self.logger.log_image(f"val_samples_{name}", [generated_grid.permute(1, 2, 0).cpu().numpy(), original_grid.permute(1, 2, 0).cpu().numpy()], caption=["Generated", "Original"])
+
+
         if self.cfg.testing.calc_inception:
             latents = torch.randn(images.shape[0], self.cfg.data.img_channels, self.cfg.data.img_resolution, self.cfg.data.img_resolution).cuda() 
             xh = multistep_consistency_sampling(self.net, latents=latents, t_steps=[80])
@@ -112,12 +127,12 @@ class Diffusion(pl.LightningModule):
     
     
     def on_validation_epoch_end(self):
-        latents = torch.randn(self.cfg.testing.samples, self.cfg.data.img_channels, self.cfg.data.img_resolution, self.cfg.data.img_resolution).to(self.device) 
-        name = self.cfg.data.name
-        xh = multistep_consistency_sampling(self.net_ema, latents=latents, t_steps=[80])
-        xh = (xh * 0.5 + 0.5).clamp(0, 1)
-        grid = make_grid(xh, nrow=8)
-        self.logger.log_image("sample_1step_{name}", [grid.permute(1, 2, 0).cpu().numpy()], caption=[""])
+        # latents = torch.randn(self.cfg.testing.samples, self.cfg.data.img_channels, self.cfg.data.img_resolution, self.cfg.data.img_resolution).to(self.device) 
+        # name = self.cfg.data.name
+        # xh = multistep_consistency_sampling(self.net_ema, latents=latents, t_steps=[80])
+        # xh = (xh * 0.5 + 0.5).clamp(0, 1)
+        # grid = make_grid(xh, nrow=8)
+        # self.logger.log_image(f"sample_1step_{name}", [grid.permute(1, 2, 0).cpu().numpy()], caption=[""])
         # save_dir = os.path.join(self.logger.log_dir, "samples")
         # os.makedirs(save_dir, exist_ok=True)
         # save_image(grid, f"{save_dir}/ct_{name}_sample_1step_{self.global_step}.png")
