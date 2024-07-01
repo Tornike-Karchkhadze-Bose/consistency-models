@@ -11,7 +11,6 @@ from torchmetrics.image.inception import InceptionScore
 # from sampler import multistep_consistency_sampling
 import os
 from torchmetrics.image.fid import FrechetInceptionDistance
-import yaml
 
 
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
