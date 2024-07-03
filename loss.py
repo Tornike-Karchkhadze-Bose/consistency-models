@@ -114,3 +114,70 @@ class CTLoss:
 #----------------------------------------------------------------------------
 
 
+
+class iCTLoss:
+    def __init__(self, cfg, sigma_data=0.5):
+        self.sigma_data = sigma_data
+        if cfg.diffusion.ct_dist_fn == 'l2':
+            self.loss_fn = torch.nn.functional.mse_loss
+        elif cfg.diffusion.ct_dist_fn == 'lpips':
+            self.loss_fn = LearnedPerceptualImagePatchSimilarity(net_type='vgg')
+        elif cfg.diffusion.ct_dist_fn == 'pseudo_huber':
+            self.loss_fn = self.pseudo_huber_loss
+        else:
+            raise ValueError(f'Loss Function not supported')
+
+    def pseudo_huber_loss(self, input, target):
+        """Computes the pseudo Huber loss.
+
+        Parameters
+        ----------
+        input : Tensor
+            Input tensor.
+        target : Tensor
+            Target tensor.
+
+        Returns
+        -------
+        Tensor
+            Pseudo Huber loss.
+        """
+        c = 0.00054 * torch.sqrt(torch.prod(torch.tensor(input.shape[1:])))
+        return torch.sqrt((input - target) ** 2 + c**2) - c
+
+    def __call__(self, net, net_ema, images, k, labels=None, augment_pipe=None):
+        n = torch.randint(1, net.N(k), (images.shape[0],))
+        
+        y, augment_labels = augment_pipe(images) if augment_pipe is not None else (images, None)
+
+        z = torch.randn_like(y) 
+
+        # we calculate all sigmas
+        sigmas = net.t(k)
+
+        # we sample with lognormal distribution new timesteps
+        timesteps = net.lognormal_timestep_distribution(sigmas, n)
+
+        tn = sigmas[timesteps].reshape(-1, 1, 1, 1).to(images.device)
+        tn_1 = sigmas[timesteps + 1].reshape(-1, 1, 1, 1).to(images.device)
+
+        # tn_1 = net.t(n + 1, k).reshape(-1, 1, 1, 1).to(images.device)
+        f_theta = net(y + tn_1 * z, tn_1, labels, augment_labels=augment_labels)
+
+        with torch.no_grad():
+            # tn = net.t(n, k).reshape(-1, 1, 1, 1).to(images.device)
+            f_theta_ema = net_ema(y + tn * z, tn, labels, augment_labels=augment_labels)
+
+        weight = net.lambda_(sigmas)[timesteps].reshape(-1, 1, 1, 1).to(images.device) # lambda(t) in the paper
+
+
+        if isinstance(self.loss_fn, LearnedPerceptualImagePatchSimilarity) and self.loss_fn.device != f_theta.device:
+            self.loss_fn.to(f_theta.device)
+        loss = self.loss_fn(f_theta, f_theta_ema)
+
+        loss = weight * loss
+        loss = loss.mean()
+        return loss
+
+        
+

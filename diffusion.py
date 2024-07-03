@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
-from networks import VEPrecond, VPPrecond, EDMPrecond, CTPrecond
-from loss import VELoss, VPLoss, EDMLoss, CTLoss
+from networks import VEPrecond, VPPrecond, EDMPrecond, CTPrecond, iCTPrecond
+from loss import VELoss, VPLoss, EDMLoss, CTLoss, iCTLoss
 from torch import optim
 import numpy as np
 import torch
@@ -47,6 +47,15 @@ class Diffusion(pl.LightningModule):
             self.loss_fn = CTLoss(self.cfg)
             self.net = CTPrecond(self.cfg, use_fp16=self.cfg.training.precision == 16)
             self.net_ema = CTPrecond(self.cfg, use_fp16=self.cfg.training.precision == 16) # no_grad or not ???
+            for param in self.net_ema.parameters():
+                param.requires_grad = False
+            self.net_ema.load_state_dict(copy.deepcopy(self.net.state_dict()))
+
+            self.N_and_mu =  self.cfg.diffusion.N_and_mu
+        elif cfg.diffusion.preconditioning == 'ict':
+            self.loss_fn = iCTLoss(self.cfg)
+            self.net = iCTPrecond(self.cfg, use_fp16=self.cfg.training.precision == 16)
+            self.net_ema = iCTPrecond(self.cfg, use_fp16=self.cfg.training.precision == 16) # no_grad or not ???
             for param in self.net_ema.parameters():
                 param.requires_grad = False
             self.net_ema.load_state_dict(copy.deepcopy(self.net.state_dict()))

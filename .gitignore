@@ -8,3 +8,7 @@ data
 .gitignore
 .vscode
 *.ipynb
+test_ct.py
+test_ict.py
+consistency_models/*
+*.pyc

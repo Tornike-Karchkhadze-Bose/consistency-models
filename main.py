@@ -116,6 +116,7 @@ def main(cfg):
         # limit_train_batches=10,
         log_every_n_steps=cfg.training.log_every_n_steps,
         check_val_every_n_epoch=cfg.training.validation_every_n_epochs,
+        val_check_interval=cfg.training.val_check_interval, 
         gradient_clip_val=cfg.optim.grad_clip,
         benchmark=True,
         strategy = DDPStrategy(find_unused_parameters=False)

@@ -1,10 +1,10 @@
-project_name: "consistancy_models_butterflies256"
+project_name: "i_consistancy_models_butterflies256"
 log_directory: "lightning_logs"
 mode: train # train | test
 
 id:
-  version: "bs=32_s_20000_s1=17" #"adaptive_bs=128x4_s_200000_gpu-2"
-  name: "ct_diff_lpips"
+  version: "bs=230x4_s_800000_s1=300" #"adaptive_bs=128x4_s_200000_gpu-2"
+  name: "ict_diff_lpips"
 
 
 model:
@@ -13,22 +13,22 @@ model:
     dropout: 0.0
 
 training:
-    batch_size: 32 #128
+    batch_size: 230
     precision: 16
     max_epochs: 1000
     max_steps: 800000
     warmup_epochs: 1
-    accumulate_grad_batches: 1 #4
+    accumulate_grad_batches: 4
     save_top_k: 1
     log_every_n_steps: 2
-    validation_every_n_epochs: # ???
+    validation_every_n_epochs:  # ???
     val_check_interval: 1000
     resume_from_checkpoint: #/home/tornike/consistency-models/lightning_logs/consistancy_models_butterflies256/2024-06-29T09-50-11_ct_diff_lpips_adaptive_bs=230x4_s_800000_gpu-1/checkpoints/last.ckpt
     devices: 
-        # - 0
+        - 0
         # - 1
         # - 2   
-        - 3
+        # - 3
 
 testing:
     batch_size: 512
@@ -52,9 +52,11 @@ optim:
     optimizer : radam
 
 diffusion:
-    preconditioning: ct # vp | ve | edm | ct | ict
+    preconditioning: ict # vp | ve | edm | ct | ict
     N_and_mu: adaptive # adaptive | fixed
     mu_0 : 0.90 #0.90
-    s_0 : 2
-    s_1 : 17
-    ct_dist_fn : lpips # l1 | l2 | lpips | pseudo_huber
+    s_0 : 10
+    s_1 : 300
+    p_mean: -1.1
+    p_std: 2.0 
+    ct_dist_fn : pseudo_huber # l1 | l2 | lpips | pseudo_huber

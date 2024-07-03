@@ -738,3 +738,172 @@ class CTPrecond(torch.nn.Module):
         mu_0 = self.cfg.diffusion.mu_0
         s0 = self.cfg.diffusion.s_0
         return torch.as_tensor(np.exp(s0 * np.log(mu_0) / self.N(k)))
+
+#----------------------------------------------------------------------------
+# Preconditioning corresponding to the improved Consistency Training (iCT) from the paper "Improved Techniques for Training Consistency Models"
+
+
+class iCTPrecond(torch.nn.Module):
+    def __init__(self,
+        cfg,
+        label_dim       = 0,            # Number of class labels, 0 = unconditional.
+        use_fp16        = False,        # Execute the underlying model at FP16 precision?
+        sigma_min       = 0.002,                # Minimum supported noise level.
+        sigma_max       = 80,     # Maximum supported noise level.
+        sigma_data      = 0.5,              # Expected standard deviation of the training data.
+        rho             = 7,
+        model_type      = 'SongUNet',   # Class name of the underlying model.
+        **model_kwargs,                 # Keyword arguments for the underlying model.
+    ):
+        super().__init__()
+        self.cfg = cfg
+        self.img_resolution = cfg.data.img_resolution 
+        self.img_channels = cfg.data.img_channels
+        self.label_dim = label_dim
+        self.use_fp16 = use_fp16
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.sigma_data = sigma_data
+        self.rho = rho
+        self.model = globals()[model_type](img_resolution=self.img_resolution, in_channels=self.img_channels, out_channels=self.img_channels, label_dim=label_dim, **model_kwargs)
+
+    def forward(self, x, sigma, class_labels=None, force_fp32=False, **model_kwargs):
+        x = x.to(torch.float32)
+        sigma = sigma.to(torch.float32).reshape(-1, 1, 1, 1)
+        class_labels = None if self.label_dim == 0 else torch.zeros([1, self.label_dim], device=x.device) if class_labels is None else class_labels.to(torch.float32).reshape(-1, self.label_dim)
+        dtype = torch.float16 if (self.use_fp16 and not force_fp32 and x.device.type == 'cuda') else torch.float32
+
+        c_skip = (self.sigma_data ** 2) / ((sigma - self.sigma_min) ** 2  + self.sigma_data ** 2)
+        c_out = self.sigma_data * (sigma - self.sigma_min) / (self.sigma_data ** 2 + sigma ** 2).sqrt()
+        
+        c_in = 1 / (self.sigma_data ** 2 + sigma ** 2).sqrt() # EDM
+        c_noise = sigma.log() / 4 # EDM
+
+        F_x = self.model((c_in * x).to(dtype), c_noise.flatten(), class_labels=class_labels, **model_kwargs)
+        assert F_x.dtype == dtype
+        D_x = c_skip * x + c_out * F_x.to(torch.float32)
+        return D_x
+
+    def round_sigma(self, sigma):
+        return torch.as_tensor(sigma)
+    
+    def t(self, k):
+        N = self.N(k)
+        
+        # Time step discretization.
+        step_indices = torch.arange(N, dtype=torch.float64) #, device=latents.device)
+        t_steps = (self.sigma_min ** (1 / self.rho) + step_indices / (N - 1) * (self.sigma_max ** (1 / self.rho) - self.sigma_min ** (1 / self.rho))) ** self.rho
+        # t_steps = torch.cat([torch.zeros_like(t_steps[:1]), self.round_sigma(t_steps)])   ### we don't need zero step here gives error as sigma = 0.000
+
+        return t_steps
+
+    def lambda_(self, sigmas):
+        """Computes the weighting for the consistency loss.
+
+        Parameters
+        ----------
+        sigmas : Tensor
+            Standard deviations of the noise.
+
+        Returns
+        -------
+        Tensor
+            Weighting for the consistency loss.
+
+        References
+        ----------
+        [1] [Improved Techniques For Consistency Training](https://arxiv.org/pdf/2310.14189.pdf)
+        """
+        lambda_ =  1 / (sigmas[1:] - sigmas[:-1])
+
+        return lambda_
+
+    def lognormal_timestep_distribution(self, sigmas, i):
+        """Draws timesteps from a lognormal distribution.
+
+        Parameters
+        ----------
+        num_samples : int
+            Number of samples to draw.
+        sigmas : Tensor
+            Standard deviations of the noise.
+        P_mean : float, default=-1.1
+            P_mean of the lognormal distribution.
+        P_std : float, default=2.0
+            Standard deviation of the lognormal distribution.
+
+        Returns
+        -------
+        Tensor
+            Timesteps drawn from the lognormal distribution.
+
+        References
+        ----------
+        [1] [Improved Techniques For Consistency Training](https://arxiv.org/pdf/2310.14189.pdf)
+        """
+        pdf = torch.erf((torch.log(sigmas[1:]) - self.cfg.diffusion.p_mean) / (self.cfg.diffusion.p_std * (2**0.5))) - torch.erf(
+            (torch.log(sigmas[:-1]) - self.cfg.diffusion.p_mean) / (self.cfg.diffusion.p_std * (2**0.5))
+        )
+        pdf = pdf / pdf.sum()
+
+        t_steps = torch.multinomial(pdf, i.shape[0], replacement=True)
+
+        return t_steps
+
+
+    def N(self, k) -> int:
+        """Implements the improved timestep discretization schedule.
+
+        Parameters
+        ----------
+        k : int
+            Current step in the training loop.
+        K : int
+            Total number of steps the model will be trained for.
+        s0 : int, default=10
+            Timesteps at the start of training.
+        s1 : int, default=1280
+            Timesteps at the end of training.
+
+        Returns
+        -------
+        int
+            Number of timesteps at the current point in training.
+
+        References
+        ----------
+        [1] [Improved Techniques For Consistency Training](https://arxiv.org/pdf/2310.14189.pdf)
+        """
+        K = self.cfg.training.max_steps
+        s1 = self.cfg.diffusion.s_1
+        s0 = self.cfg.diffusion.s_0
+
+        K_prime = np.floor(
+            K / (np.log2(np.floor(s1 / s0)) + 1)
+        )
+        num_timesteps = s0 * np.power(
+            2, np.floor(k / K_prime)
+        )
+        num_timesteps = np.minimum(num_timesteps, s1) + 1
+
+        return int(num_timesteps)
+
+    def mu(self, k):
+        """Implements the improved timestep discretization schedule.
+
+        Parameters
+        ----------
+        k : int
+            Current step in the training loop.
+
+        Returns
+        -------
+        float
+            returs 0.0 for every k as ict paper claims removing weight works the best.
+
+        References
+        ----------
+        [1] [Improved Techniques For Consistency Training](https://arxiv.org/pdf/2310.14189.pdf)
+        """        
+        mu_0 = 0.0
+        return torch.as_tensor(mu_0)
