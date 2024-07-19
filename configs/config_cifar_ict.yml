@@ -1,0 +1,64 @@
+project_name: "consistancy_models_cifar10_testing"
+log_directory: "lightning_logs"
+mode: train # train | test | validate_all
+
+id:
+  version: "bs=512_s_200000_s=10_1280_ema_0.0_lr=4.e04_ncsnpp"
+  name: "ict_diff_lpips"
+
+
+# model:
+#     ema: True
+#     ema_rate: 0.0 #999
+#     dropout: 0.0
+
+training:
+    batch_size: 64 #512
+    precision: 32
+    max_epochs: -1 #2500
+    max_steps: 200000
+    warmup_epochs: 1
+    accumulate_grad_batches: 2
+    save_top_k: 1
+    log_every_n_steps: 10
+    validation_every_n_epochs: # ???
+    val_check_interval: 1000
+    resume_from_checkpoint: lightning_logs/consistancy_models_cifar10_testing/2024-07-13T19-39-11_ict_diff_lpips_bs=512_s_200000_s=10_1280_ema_0.0_lr=4.e04_ncsnpp/checkpoints/last.ckpt
+    devices: 
+        - 0
+        - 1
+        - 2    
+        - 3
+
+testing:
+    batch_size: 128 #1024
+    samples: 64
+    calc_inception: True
+    calc_fid: True
+
+data:
+    name: cifar10 # cifar10 | butterflies256 | mnist
+    num_workers: 4
+    img_resolution : 32
+    img_channels : 3
+
+optim:
+    grad_clip: null
+    weight_decay: 0
+    lr: 4.e-4
+    betas: [0.9,0.999]
+    eps: 1.e-8
+    amsgrad: False
+    optimizer : radam
+
+diffusion:
+    preconditioning: ict-ncsnpp # vp | ve | edm | ct | ict | ict-ncsnpp
+    N_and_mu: adaptive # adaptive | fixed
+    mu_0 : 0.0 #0.999 #0.90
+    s_0 : 10
+    s_1 : 1280
+    p_mean: -1.1
+    p_std: 2.0 
+    ct_dist_fn : pseudo_huber # l1 | l2 | lpips | pseudo_huber
+    denoise_steps_to_log: [1, 2]
+    ema_rate: [0.99993]

@@ -2,8 +2,8 @@ import yaml
 import argparse
 from diffusion import Diffusion
 import pytorch_lightning as pl
-from ema import EMA, EMAModelCheckpoint
-from torch.utils.data import DataLoader
+# from ema import EMA, EMAModelCheckpoint
+from torch.utils.data import DataLoader, ConcatDataset
 from data import get_dataset
 from pytorch_lightning.strategies.ddp import DDPStrategy
 import click
@@ -12,6 +12,7 @@ import datetime
 from pytorch_lightning.loggers import WandbLogger
 import numpy as np
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 @rank_zero_only
 def create_directories(path):
@@ -78,14 +79,29 @@ def main(cfg):
     )
     create_directories(checkpoint_path)
 
-    ckpt_callback = EMAModelCheckpoint(dirpath= checkpoint_path, save_top_k=cfg.training.save_top_k, monitor="val_loss", save_last=True, filename='{epoch}-{val_loss:.4f}', every_n_train_steps=None,)
-    ema_callback = EMA(decay=cfg.model.ema_rate)
-    callbacks = [ckpt_callback, ema_callback]
+    # ckpt_callback = EMAModelCheckpoint(dirpath= checkpoint_path, save_top_k=cfg.training.save_top_k, monitor="val_loss", save_last=True, filename='{epoch}-{val_loss:.4f}', every_n_train_steps=None,)
+    # ema_callback = EMA(decay=cfg.model.ema_rate)
+    # callbacks = [ckpt_callback, ema_callback]
+
+    ckpt_callback = ModelCheckpoint(
+        dirpath=checkpoint_path,
+        save_top_k=cfg.training.save_top_k,
+        monitor="val_loss",
+        save_last=True,
+        filename='{epoch}-{val_loss:.4f}',
+        every_n_train_steps=None
+    )
+
+    callbacks = [ckpt_callback]
 
     model = Diffusion(cfg)
 
+    # Load the datasets
+    train_dataset = get_dataset(cfg.data.name, train=True)
+    val_dataset = get_dataset(cfg.data.name, train=False)
+
     train_dataloader = DataLoader(
-        get_dataset(cfg.data.name, train=True), 
+        train_dataset, 
         batch_size=cfg.training.batch_size, 
         shuffle=True, 
         num_workers=cfg.data.num_workers, 
@@ -94,7 +110,7 @@ def main(cfg):
     )
 
     val_dataloader = DataLoader(
-        get_dataset(cfg.data.name, train=False), 
+        val_dataset, 
         batch_size=cfg.testing.batch_size, 
         shuffle=False, 
         num_workers=cfg.data.num_workers, 
@@ -125,8 +141,28 @@ def main(cfg):
         # DDPStrategy(find_unused_parameters=False),
     )
 
-    # Train
-    trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader, ckpt_path = cfg.training.resume_from_checkpoint)
+    if cfg.mode in ["validate_all"]:
+        # Evaluation / Validation
+        
+        # Create a combined dataset
+        combined_dataset = ConcatDataset([train_dataset, val_dataset])
+
+        # Create a DataLoader for the combined dataset
+        combined_dataloader = DataLoader(
+            combined_dataset, 
+            batch_size=cfg.testing.batch_size, 
+            shuffle=False, 
+            num_workers=cfg.data.num_workers, 
+            pin_memory=True, 
+            persistent_workers=True,
+        )
+
+        trainer.validate(model, combined_dataloader, ckpt_path = cfg.training.resume_from_checkpoint)
+    elif cfg.mode in ["test", "validate"]:
+        # Evaluation / Validation
+        trainer.validate(model, val_dataloader, ckpt_path = cfg.training.resume_from_checkpoint)
+    elif cfg.mode == "train":
+        trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader, ckpt_path = cfg.training.resume_from_checkpoint)
 
 if __name__ == '__main__':
     main()

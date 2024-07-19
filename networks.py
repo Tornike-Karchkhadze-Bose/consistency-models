@@ -707,8 +707,14 @@ class CTPrecond(torch.nn.Module):
         c_skip = (self.sigma_data ** 2) / ((sigma - self.sigma_min) ** 2  + self.sigma_data ** 2)
         c_out = self.sigma_data * (sigma - self.sigma_min) / (self.sigma_data ** 2 + sigma ** 2).sqrt()
         
-        c_in = 1 / (self.sigma_data ** 2 + sigma ** 2).sqrt() # EDM
-        c_noise = sigma.log() / 4 # EDM
+        if self.cfg.model.inner_precond == "edm":
+            c_in = 1 / (self.sigma_data ** 2 + sigma ** 2).sqrt()  # EDM
+            c_noise = sigma.log() / 4  # EDM
+        elif self.cfg.model.inner_precond == "no":
+            c_in = 1.0
+            c_noise = sigma
+        else:
+            raise NotImplementedError(f"inner_precond '{self.cfg.model.inner_precond}' is not implemented")
 
         F_x = self.model((c_in * x).to(dtype), c_noise.flatten(), class_labels=class_labels, **model_kwargs)
         assert F_x.dtype == dtype
@@ -905,5 +911,5 @@ class iCTPrecond(torch.nn.Module):
         ----------
         [1] [Improved Techniques For Consistency Training](https://arxiv.org/pdf/2310.14189.pdf)
         """        
-        mu_0 = 0.0
+        mu_0 = self.cfg.diffusion.mu_0
         return torch.as_tensor(mu_0)

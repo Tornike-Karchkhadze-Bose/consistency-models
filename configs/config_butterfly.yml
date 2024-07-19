@@ -3,7 +3,7 @@ log_directory: "lightning_logs"
 mode: train # train | test
 
 id:
-  version: "bs=32_s_20000_s1=17" #"adaptive_bs=128x4_s_200000_gpu-2"
+  version: "bs=32_s_20000_s1=24_inner_prec=no" #"adaptive_bs=128x4_s_200000_gpu-2"
   name: "ct_diff_lpips"
 
 
@@ -11,12 +11,13 @@ model:
     ema: True
     ema_rate: 0.999
     dropout: 0.0
+    inner_precond: "no"
 
 training:
     batch_size: 32 #128
     precision: 16
     max_epochs: 1000
-    max_steps: 800000
+    max_steps: 20000 #800000
     warmup_epochs: 1
     accumulate_grad_batches: 1 #4
     save_top_k: 1
@@ -56,5 +57,5 @@ diffusion:
     N_and_mu: adaptive # adaptive | fixed
     mu_0 : 0.90 #0.90
     s_0 : 2
-    s_1 : 17
+    s_1 : 24
     ct_dist_fn : lpips # l1 | l2 | lpips | pseudo_huber

@@ -12,3 +12,7 @@ test_ct.py
 test_ict.py
 consistency_models/*
 *.pyc
+zzz-possible_change.py
+.gitignore
+diffusion_1.py
+.torch_extensions

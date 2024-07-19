@@ -91,6 +91,13 @@ class EMA(Callback):
         self.every_n_steps = every_n_steps
         self.cpu_offload = cpu_offload
 
+
+    def update_decay(self, new_decay):
+        if 0 <= new_decay <= 1:
+            self.decay = new_decay
+        else:
+            raise ValueError("Decay rate must be between 0 and 1")
+        
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         device = pl_module.device if not self.cpu_offload else torch.device('cpu')
         trainer.optimizers = [

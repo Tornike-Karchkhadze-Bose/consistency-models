@@ -25,7 +25,12 @@ def generate(cfg, nrow=8, ncol=8, calc_fid=False, ckpt=None):
         cfg = yaml.safe_load(f)
         cfg = dict2namespace(cfg)
 
-    model = Diffusion.load_from_checkpoint(ckpt, cfg=cfg).cuda()
+    device_index = cfg.training.devices[0]
+    # Create the torch device object based on the index
+    device = torch.device(f'cuda:{device_index}' if torch.cuda.is_available() else 'cpu')
+
+
+    model = Diffusion.load_from_checkpoint(ckpt, cfg=cfg).to(device)
     model.eval()
 
     # Extract the directory path
@@ -35,7 +40,7 @@ def generate(cfg, nrow=8, ncol=8, calc_fid=False, ckpt=None):
     generated_folder_path = os.path.join(directory_path, 'generated')
     os.makedirs(generated_folder_path, exist_ok=True)
 
-    latents = torch.randn(nrow * ncol, cfg.data.img_channels, cfg.data.img_resolution, cfg.data.img_resolution).cuda()
+    latents = torch.randn(nrow * ncol, cfg.data.img_channels, cfg.data.img_resolution, cfg.data.img_resolution).to(device) #.cuda()
     xh = multistep_consistency_sampling(model.net_ema, latents=latents, t_steps=[80, 40, 20, 10, 5])
     xh = (xh * 0.5 + 0.5).clamp(0, 1)
     grid = make_grid(xh, nrow=nrow, padding=0)
@@ -57,10 +62,10 @@ def generate(cfg, nrow=8, ncol=8, calc_fid=False, ckpt=None):
     if not calc_fid:
         return
     
-    fid = FrechetInceptionDistance(feature=2048).cuda()
+    fid = FrechetInceptionDistance(feature=2048).to(device)
     dataloader = DataLoader(
         get_dataset(cfg.data.name, train=False), 
-        batch_size=cfg.training.batch_size, 
+        batch_size=cfg.testing.batch_size, 
         shuffle=False, 
         num_workers=cfg.data.num_workers, 
         pin_memory=True, 
@@ -68,14 +73,15 @@ def generate(cfg, nrow=8, ncol=8, calc_fid=False, ckpt=None):
     )
 
     for x_batch, _ in tqdm(dataloader):
-        x_batch = ((x_batch.cuda() + 1) * 127.5).clamp(0, 255).to(torch.uint8)
+        x_batch = ((x_batch.to(device) + 1) * 127.5).clamp(0, 255).to(torch.uint8)
         fid.update(x_batch, real=True)
     
 
     import torchvision.utils as vutils
     batch_size = 250
     for _ in tqdm(range(10000//batch_size)):
-        latents = torch.randn(batch_size, cfg.data.img_channels, cfg.data.img_resolution, cfg.data.img_resolution).cuda() 
+        latents = torch.randn(batch_size, cfg.data.img_channels, cfg.data.img_resolution, cfg.data.img_resolution).to(device)
+        # latents = torch.randn(x_batch.shape[0], cfg.data.img_channels, cfg.data.img_resolution, cfg.data.img_resolution).to(device) 
         xh = multistep_consistency_sampling(model.net_ema, latents=latents, t_steps=[80])
         xh = ((xh + 1) * 127.5).clamp(0, 255).to(torch.uint8)
         fid.update(xh, real=False)
